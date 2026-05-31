@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::board::{BoardSession, BoardSnapshot};
-use crate::cache::{AnalysisCache, CacheKey};
+use crate::cache::{AnalysisCache, AnalysisResult, CacheKey};
 use crate::config::ResolvedConfig;
 use crate::engine::{
     default_uci_options, AnalysisRequest, Engine, EngineInfo, ProgressEvent, DEFAULT_DEPTH,
@@ -267,6 +267,7 @@ impl ChessServer {
         progress: Option<mpsc::UnboundedSender<ProgressEvent>>,
         cancel_rx: oneshot::Receiver<()>,
     ) -> Result<CallToolResult, McpError> {
+        let started_at = std::time::Instant::now();
         let AnalyzePositionArgs {
             session_id,
             fen,
@@ -308,7 +309,7 @@ impl ChessServer {
         };
 
         if let Some(cached) = self.cache.get(&cache_key) {
-            return Ok(json_response(&cached));
+            return Ok(analysis_response(&cached, started_at.elapsed()));
         }
 
         let result = self
@@ -327,7 +328,7 @@ impl ChessServer {
         match result {
             Ok(result) => {
                 self.cache.put(cache_key, result.clone());
-                Ok(json_response(&result))
+                Ok(analysis_response(&result, started_at.elapsed()))
             }
             Err(e) => Ok(error_response(e)),
         }
@@ -340,6 +341,28 @@ fn snapshot_response(snap: &BoardSnapshot) -> CallToolResult {
 
 fn json_response<T: Serialize>(value: &T) -> CallToolResult {
     let payload = serde_json::to_string_pretty(value)
+        .unwrap_or_else(|e| format!("{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}", e.to_string()));
+    CallToolResult::success(vec![Content::text(payload)])
+}
+
+/// Serializes an `AnalysisResult` and injects the server-side time spent
+/// delivering it (engine work for fresh results, ~0 for cache hits), rounded
+/// to one decimal place in seconds. Not part of the cached value.
+fn analysis_response(result: &AnalysisResult, elapsed: std::time::Duration) -> CallToolResult {
+    let mut value = match serde_json::to_value(result) {
+        Ok(v) => v,
+        Err(e) => {
+            return CallToolResult::success(vec![Content::text(format!(
+                "{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}",
+                e.to_string()
+            ))]);
+        }
+    };
+    if let Some(obj) = value.as_object_mut() {
+        let elapsed_seconds = (elapsed.as_secs_f64() * 10.0).round() / 10.0;
+        obj.insert("elapsed_seconds".into(), json!(elapsed_seconds));
+    }
+    let payload = serde_json::to_string_pretty(&value)
         .unwrap_or_else(|e| format!("{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}", e.to_string()));
     CallToolResult::success(vec![Content::text(payload)])
 }
