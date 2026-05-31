@@ -1,0 +1,13 @@
+# Example configuration for chess-pos-analyzer.
+# Copy to ./chess-mcp.toml to take effect.
+#
+# Resolution order (first match wins):
+#   1. CLI flag: --stockfish-path / --cache-capacity / --log-level
+#   2. Env var:  CHESS_MCP_STOCKFISH_PATH / CHESS_MCP_CACHE_CAPACITY / CHESS_MCP_LOG_LEVEL
+#   3. This file
+#   4. Platform default
+
+# stockfish_path = "stockfish/stockfish.exe"   # Windows default
+# stockfish_path = "stockfish/stockfish"       # macOS / Linux default
+# cache_capacity = 1024
+# log_level = "info"
