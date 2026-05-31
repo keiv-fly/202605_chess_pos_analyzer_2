@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "chess": {
+      "type": "stdio",
+      "command": "target\\release\\chess-pos-analyzer.exe",
+      "args": [],
+      "env": {}
+    }
+  }
+}
