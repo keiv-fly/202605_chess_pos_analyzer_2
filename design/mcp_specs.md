@@ -16,24 +16,39 @@ The server is not an opening trainer. It must not query opening databases, user 
 
 The MCP server runs locally and owns three pieces of state:
 
-1. Board sessions
+1. Board session (single, active)
    - current FEN
    - move history
-   - redo history
    - optional labels/notes attached by the client
+   - Only one session exists at a time. `create_board` replaces the previous session and frees its memory. Stale `session_id` values return `session_not_found`.
 
-2. Stockfish process pool
+2. Stockfish process
+   - one long-lived Stockfish child process, started lazily
    - configured Stockfish executable path
    - deterministic UCI options
-   - per-request cancellation
+   - per-request cancellation via UCI `stop`
    - engine health checks
 
 3. Analysis cache
-   - in-memory cache keyed by normalized FEN plus analysis settings
+   - in-memory bounded LRU cache (default cap: 1024 entries, configurable)
+   - key: normalized FEN (position + side to move + castling rights + en-passant square; halfmove clock and fullmove number are dropped) plus the analysis settings (`depth`, `multipv`)
+   - the same position may hold multiple cached entries at different `depth`/`multipv` values
    - no external chess database cache
    - no opening-book cache
 
-Recommended implementation language: Rust with `shakmaty`.
+Implementation language: Rust.
+
+Required crates:
+
+- `rmcp` — official Rust MCP SDK; stdio transport
+- `shakmaty` — chess move generation, FEN parsing, legality
+- `tokio` — async runtime, Stockfish process I/O
+- `serde` / `serde_json` — tool input/output schemas
+- `lru` — bounded analysis cache
+- `uuid` — session IDs
+- `thiserror` — structured error model
+
+Transport: stdio only (no HTTP/SSE in v1).
 
 ## Global Definitions
 
@@ -74,6 +89,17 @@ Clients may request lower depths for faster interactive use, but every response 
 
 The server exposes tools for board control and analysis. Tool names use `snake_case`.
 
+The complete tool list for v1 is exactly:
+
+- `create_board`
+- `get_board`
+- `make_move`
+- `undo_move`
+- `engine_status`
+- `analyze_position`
+
+There is no `set_board` and no `redo_move` in v1.
+
 ### Resources
 
 The server exposes read-only resources for active sessions and server status.
@@ -105,7 +131,7 @@ Rules:
 
 Output:
 
-Here and later in the text there is only one active session. When a new session is created then old session is not available anymore (memory freed)
+Only one session is active at a time. When a new session is created via `create_board`, the previous session is destroyed and its memory freed. Any subsequent tool call using a stale `session_id` returns `session_not_found`.
 
 ```json
 {
@@ -116,7 +142,7 @@ Here and later in the text there is only one active session. When a new session 
   "history": [],
   "board_text": "string",
   "legal_move_count": 20,
-  "state": "normal | check | checkmate | stalemate"
+  "state": "normal | check | checkmate | stalemate",
   "legal_moves": ["e2e4", "d2d4"]
 }
 ```
@@ -194,7 +220,7 @@ Output:
   "path": "stockfish/stockfish.exe",
   "name": "Stockfish",
   "uci_options": {
-    "Threads": 1,
+    "Threads": 3,
     "Hash": 128,
     "UCI_AnalyseMode": true,
     "Contempt": 0
@@ -213,16 +239,18 @@ Input:
   "session_id": "uuid | null",
   "fen": "string | null",
   "depth": 20,
-  "multipv": 6,
-  "max_plies": 12,
+  "multipv": 6
 }
 ```
 
 Rules:
 
+- Exactly one of `session_id` or `fen` must be supplied. If both or neither are given, return a structured error.
 - Analyze only the supplied FEN or current session position.
 - Use Stockfish `go depth <depth>` with `MultiPV=<multipv>`.
-- Return principal variations in UCI.
+- Return full principal variations in UCI (no PV length cap).
+- Before searching, check the analysis cache. The cache key is the normalized FEN (position + side to move + castling rights + en-passant square) plus `depth` and `multipv`. On cache hit, return immediately without invoking Stockfish.
+- On cache miss, run the search and store the result in the cache before returning.
 
 Output:
 
@@ -270,24 +298,27 @@ Examples:
 
 ## Progress and Cancellation
 
-Long-running tools should report progress:
+Long-running tools report progress via MCP progress notifications:
 
-- `analyze_position`: engine started, depth complete if available, completed
+- `analyze_position`: emits `engine_started`, one `depth_complete` per completed iteration (carrying current best line), and `completed` when finished.
 
-Cancellation should stop the active Stockfish search with `stop`, drain output until `bestmove`, and return `analysis_cancelled`.
+Cancellation follows the MCP cancellation flow. On cancel, the server sends UCI `stop` to Stockfish, drains output until `bestmove`, and returns the structured error `analysis_cancelled`. Cancelled searches are not written to the cache.
 
 ## Stockfish Process Requirements
 
-Default paths:
+Default paths (relative to the server's current working directory):
 
 - Windows: `stockfish/stockfish.exe`
 - macOS/Linux: `stockfish/stockfish`
 
-Allow override through:
+The Stockfish executable path is resolved in this priority order (first match wins):
 
-- server config file
-- environment variable
-- command-line argument
+1. Command-line argument: `--stockfish-path <PATH>`
+2. Environment variable: `CHESS_MCP_STOCKFISH_PATH`
+3. Config file: `./chess-mcp.toml`, key `stockfish_path`
+4. Platform default (above)
+
+The same priority chain applies to other configurable settings (e.g. cache capacity, log level).
 
 The server must:
 
@@ -334,13 +365,15 @@ If Stockfish is missing, integration tests should fail with a clear setup messag
 
 ## First Implementation Scope
 
-The first implementation should include:
+The first implementation must include:
 
-- MCP server startup
-- Stockfish status check
-- board session create/get/set
-- make/undo move
-- legal move listing
-- position analysis
-- in-memory cache
-- unit tests and one real Stockfish integration test
+- MCP server startup over stdio using `rmcp`
+- Stockfish status check (`engine_status`)
+- Board session create/get (`create_board`, `get_board`) — single active session, replaced on create
+- Make/undo move (`make_move`, `undo_move`)
+- Legal move listing (returned as part of board state)
+- Position analysis (`analyze_position`) with progress notifications and cancellation
+- In-memory LRU analysis cache (default cap 1024)
+- Stockfish path resolution via CLI arg > env var > config file > default
+- Unit tests covering board logic, FEN normalization, cache behavior, UCI parsing, and error mapping
+- One real Stockfish integration test (`#[ignore]` if Stockfish is missing, with a clear setup hint)
