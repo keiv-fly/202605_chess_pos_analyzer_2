@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ChessError;
 use crate::fen::normalize_fen;
+use crate::pv_explain::{CaptureEvent, MaterialSwing};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -27,6 +28,16 @@ pub struct AnalysisLine {
     pub rank: u32,
     pub score: Score,
     pub pv_uci: Vec<String>,
+    /// SAN form of `pv_uci`, with `+`/`#` annotations for check/mate.
+    /// Empty if enrichment was skipped (e.g. partial result before any depth completed).
+    #[serde(default)]
+    pub pv_san: Vec<String>,
+    /// Capture events extracted from the PV in order.
+    #[serde(default)]
+    pub captures: Vec<CaptureEvent>,
+    /// Net material change after playing the PV, from side-to-move's perspective.
+    #[serde(default)]
+    pub material_swing: MaterialSwing,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -114,6 +125,9 @@ mod tests {
                     mate_in: None,
                 },
                 pv_uci: vec!["e2e4".to_string()],
+                pv_san: Vec::new(),
+                captures: Vec::new(),
+                material_swing: MaterialSwing::default(),
             }],
         }
     }

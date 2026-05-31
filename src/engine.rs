@@ -11,6 +11,7 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::cache::{AnalysisLine, AnalysisResult, Score, ScoreKind, SCHEMA_VERSION};
 use crate::error::ChessError;
+use crate::pv_explain::explain_pv;
 
 pub const DEFAULT_DEPTH: u32 = 20;
 pub const DEFAULT_MULTIPV: u32 = 6;
@@ -199,6 +200,21 @@ impl Engine {
 
         let mut lines: Vec<AnalysisLine> = current.into_values().collect();
         lines.sort_by_key(|l| l.rank);
+
+        // Enrich each line with SAN, capture events, and material swing.
+        // Skip silently on per-line failure: engines occasionally emit a PV
+        // we can't replay (encoding edge cases), and that shouldn't sink the
+        // whole analysis — the raw UCI line is still useful.
+        for line in &mut lines {
+            if line.pv_uci.is_empty() {
+                continue;
+            }
+            if let Ok(exp) = explain_pv(&req.fen, &line.pv_uci) {
+                line.pv_san = exp.pv_san;
+                line.captures = exp.captures;
+                line.material_swing = exp.material_swing;
+            }
+        }
 
         Ok(AnalysisResult {
             schema_version: SCHEMA_VERSION.to_string(),
@@ -440,6 +456,9 @@ pub fn parse_info_line(line: &str) -> Option<ParsedInfo> {
             rank: multipv,
             score,
             pv_uci: pv,
+            pv_san: Vec::new(),
+            captures: Vec::new(),
+            material_swing: Default::default(),
         },
     })
 }
