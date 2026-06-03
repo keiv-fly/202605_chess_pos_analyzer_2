@@ -143,7 +143,9 @@ impl ChessServer {
     ) -> Result<CallToolResult, McpError> {
         let session_guard = self.session.lock().await;
         match session_guard.as_ref() {
-            Some(s) if s.id().to_string() == args.session_id => Ok(snapshot_response(&s.snapshot())),
+            Some(s) if s.id().to_string() == args.session_id => {
+                Ok(snapshot_response(&s.snapshot()))
+            }
             _ => Ok(error_response(ChessError::SessionNotFound {
                 session_id: args.session_id,
             })),
@@ -220,7 +222,9 @@ impl ChessServer {
         let progress_task = tokio::spawn(async move {
             let mut progress: f64 = 0.0;
             while let Some(event) = progress_rx.recv().await {
-                let Some(token) = progress_token.as_ref() else { continue };
+                let Some(token) = progress_token.as_ref() else {
+                    continue;
+                };
                 let (msg, advance) = match &event {
                     ProgressEvent::Started { depth, multipv } => (
                         format!("engine_started depth={} multipv={}", depth, multipv),
@@ -251,9 +255,7 @@ impl ChessServer {
             let _ = cancel_tx.send(());
         });
 
-        let result = self
-            .run_analysis(args, Some(progress_tx), cancel_rx)
-            .await;
+        let result = self.run_analysis(args, Some(progress_tx), cancel_rx).await;
 
         cancel_forward.abort();
         let _ = progress_task.await;
@@ -296,7 +298,9 @@ impl ChessServer {
             match session_guard.as_ref() {
                 Some(s) if s.id().to_string() == sid => s.fen(),
                 _ => {
-                    return Ok(error_response(ChessError::SessionNotFound { session_id: sid }));
+                    return Ok(error_response(ChessError::SessionNotFound {
+                        session_id: sid,
+                    }));
                 }
             }
         } else {
@@ -340,8 +344,12 @@ fn snapshot_response(snap: &BoardSnapshot) -> CallToolResult {
 }
 
 fn json_response<T: Serialize>(value: &T) -> CallToolResult {
-    let payload = serde_json::to_string_pretty(value)
-        .unwrap_or_else(|e| format!("{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}", e.to_string()));
+    let payload = serde_json::to_string_pretty(value).unwrap_or_else(|e| {
+        format!(
+            "{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}",
+            e.to_string()
+        )
+    });
     CallToolResult::success(vec![Content::text(payload)])
 }
 
@@ -362,8 +370,12 @@ fn analysis_response(result: &AnalysisResult, elapsed: std::time::Duration) -> C
         let elapsed_seconds = (elapsed.as_secs_f64() * 10.0).round() / 10.0;
         obj.insert("elapsed_seconds".into(), json!(elapsed_seconds));
     }
-    let payload = serde_json::to_string_pretty(&value)
-        .unwrap_or_else(|e| format!("{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}", e.to_string()));
+    let payload = serde_json::to_string_pretty(&value).unwrap_or_else(|e| {
+        format!(
+            "{{\"error\":{{\"code\":\"internal\",\"message\":{:?}}}}}",
+            e.to_string()
+        )
+    });
     CallToolResult::success(vec![Content::text(payload)])
 }
 
@@ -402,10 +414,10 @@ impl ServerHandler for ChessServer {
         _request: Option<PaginatedRequestParam>,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        let session_res = RawResource::new(SESSION_RESOURCE_URI, "Active board session")
-            .no_annotation();
-        let engine_res = RawResource::new(ENGINE_RESOURCE_URI, "Stockfish engine status")
-            .no_annotation();
+        let session_res =
+            RawResource::new(SESSION_RESOURCE_URI, "Active board session").no_annotation();
+        let engine_res =
+            RawResource::new(ENGINE_RESOURCE_URI, "Stockfish engine status").no_annotation();
         Ok(ListResourcesResult {
             resources: vec![session_res, engine_res],
             next_cursor: None,
@@ -419,7 +431,12 @@ impl ServerHandler for ChessServer {
     ) -> Result<ReadResourceResult, McpError> {
         match uri.as_str() {
             SESSION_RESOURCE_URI => {
-                let snap = self.session.lock().await.as_ref().map(BoardSession::snapshot);
+                let snap = self
+                    .session
+                    .lock()
+                    .await
+                    .as_ref()
+                    .map(BoardSession::snapshot);
                 let body = match snap {
                     Some(s) => serde_json::to_string_pretty(&s).unwrap_or_else(|_| "{}".into()),
                     None => json!({ "active": false }).to_string(),
@@ -638,9 +655,7 @@ mod tests {
             .run_analysis(
                 AnalyzePositionArgs {
                     session_id: None,
-                    fen: Some(
-                        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".into(),
-                    ),
+                    fen: Some("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".into()),
                     depth: 0,
                     multipv: 1,
                 },
@@ -660,9 +675,7 @@ mod tests {
             .run_analysis(
                 AnalyzePositionArgs {
                     session_id: None,
-                    fen: Some(
-                        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".into(),
-                    ),
+                    fen: Some("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".into()),
                     depth: 10,
                     multipv: 1,
                 },

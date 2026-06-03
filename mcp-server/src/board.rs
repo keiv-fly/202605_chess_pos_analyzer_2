@@ -63,13 +63,11 @@ impl BoardSession {
 
     /// Apply a UCI move. Returns the canonical UCI string that was applied.
     pub fn make_move(&mut self, uci: &str) -> Result<String, ChessError> {
-        let parsed = UciMove::from_ascii(uci.as_bytes()).map_err(|e| {
-            ChessError::IllegalMove {
-                attempted: uci.to_string(),
-                message: format!("could not parse UCI move: {}", e),
-                current_fen: self.fen(),
-                legal_moves: self.legal_moves_uci(),
-            }
+        let parsed = UciMove::from_ascii(uci.as_bytes()).map_err(|e| ChessError::IllegalMove {
+            attempted: uci.to_string(),
+            message: format!("could not parse UCI move: {}", e),
+            current_fen: self.fen(),
+            legal_moves: self.legal_moves_uci(),
         })?;
         let mv = parsed
             .to_move(&self.position)
@@ -107,12 +105,12 @@ impl BoardSession {
             let parsed = UciMove::from_ascii(mv_str.as_bytes()).map_err(|e| {
                 ChessError::Internal(format!("stored history not parseable: {} ({})", mv_str, e))
             })?;
-            let mv = parsed
-                .to_move(&position)
-                .map_err(|_| ChessError::Internal(format!("stored history not legal: {}", mv_str)))?;
-            position = position
-                .play(&mv)
-                .map_err(|_| ChessError::Internal(format!("stored history not playable: {}", mv_str)))?;
+            let mv = parsed.to_move(&position).map_err(|_| {
+                ChessError::Internal(format!("stored history not legal: {}", mv_str))
+            })?;
+            position = position.play(&mv).map_err(|_| {
+                ChessError::Internal(format!("stored history not playable: {}", mv_str))
+            })?;
         }
         let undone = (self.history.len() - kept.len()) as u32;
         self.history = kept;
@@ -182,8 +180,7 @@ impl BoardSession {
     }
 }
 
-pub const STARTING_FEN: &str =
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 fn parse_position(fen_str: &str) -> Result<Chess, ChessError> {
     let fen = Fen::from_ascii(fen_str.as_bytes()).map_err(|e| ChessError::InvalidFen {
@@ -280,8 +277,11 @@ mod tests {
     fn checkmate_state_detected() {
         // Fool's mate sequence
         let moves = ["f2f3", "e7e5", "g2g4", "d8h4"];
-        let session = BoardSession::new(None, &moves.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-            .unwrap();
+        let session = BoardSession::new(
+            None,
+            &moves.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
+        .unwrap();
         let snap = session.snapshot();
         assert_eq!(snap.state, "checkmate");
         assert_eq!(snap.legal_move_count, 0);

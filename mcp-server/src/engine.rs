@@ -39,7 +39,10 @@ pub struct EngineInfo {
 
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
-    Started { depth: u32, multipv: u32 },
+    Started {
+        depth: u32,
+        multipv: u32,
+    },
     DepthComplete {
         depth: u32,
         best_line: Option<AnalysisLine>,
@@ -472,13 +475,17 @@ mod tests {
         let opts = default_uci_options();
         assert_eq!(opts.get("Threads").map(String::as_str), Some("3"));
         assert_eq!(opts.get("Hash").map(String::as_str), Some("128"));
-        assert_eq!(opts.get("UCI_AnalyseMode").map(String::as_str), Some("true"));
+        assert_eq!(
+            opts.get("UCI_AnalyseMode").map(String::as_str),
+            Some("true")
+        );
         assert_eq!(opts.get("Contempt").map(String::as_str), Some("0"));
     }
 
     #[test]
     fn parse_basic_cp_info_line() {
-        let line = "info depth 12 seldepth 18 multipv 1 score cp 31 nodes 100 nps 50 pv e2e4 e7e5 g1f3";
+        let line =
+            "info depth 12 seldepth 18 multipv 1 score cp 31 nodes 100 nps 50 pv e2e4 e7e5 g1f3";
         let parsed = parse_info_line(line).unwrap();
         assert_eq!(parsed.depth, 12);
         assert_eq!(parsed.multipv, 1);

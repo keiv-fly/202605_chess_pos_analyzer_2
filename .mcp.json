@@ -2,8 +2,8 @@
   "mcpServers": {
     "chess": {
       "type": "stdio",
-      "command": "target\\release\\chess-pos-analyzer.exe",
-      "args": [],
+      "command": "cargo",
+      "args": ["run", "--quiet", "--package", "chess-pos-analyzer", "--"],
       "env": {}
     }
   }

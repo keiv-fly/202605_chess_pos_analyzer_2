@@ -13,7 +13,10 @@ pub const DEFAULT_LOG_LEVEL: &str = "info";
 
 /// CLI arguments for the chess-pos-analyzer MCP server.
 #[derive(Debug, Parser, Default, Clone)]
-#[command(name = "chess-pos-analyzer", about = "Local MCP server for chess position analysis")]
+#[command(
+    name = "chess-pos-analyzer",
+    about = "Local MCP server for chess position analysis"
+)]
 pub struct CliArgs {
     /// Path to the Stockfish executable.
     #[arg(long = "stockfish-path", value_name = "PATH")]

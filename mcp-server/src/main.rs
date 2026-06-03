@@ -12,8 +12,8 @@ async fn main() -> Result<()> {
     let config = ResolvedConfig::resolve(cli)?;
 
     // Logs go to stderr so stdout stays reserved for MCP framing.
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&config.log_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)

@@ -8,10 +8,7 @@ pub fn normalize_fen(fen: &str) -> Result<String, ChessError> {
     let parts: Vec<&str> = fen.split_ascii_whitespace().collect();
     if parts.len() < 4 {
         return Err(ChessError::InvalidFen {
-            message: format!(
-                "FEN must contain at least 4 fields, got {}",
-                parts.len()
-            ),
+            message: format!("FEN must contain at least 4 fields, got {}", parts.len()),
             fen: fen.to_string(),
         });
     }

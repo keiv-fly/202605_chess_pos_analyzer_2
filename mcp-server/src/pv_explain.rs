@@ -131,9 +131,9 @@ pub fn explain_pv(fen: &str, pv_uci: &[String]) -> Result<PvExplanation, ChessEr
         let san = SanPlus::from_move(pos.clone(), &mv);
         pv_san.push(san.to_string());
 
-        pos = pos.play(&mv).map_err(|_| {
-            ChessError::Internal(format!("could not play pv move '{}'", mv_str))
-        })?;
+        pos = pos
+            .play(&mv)
+            .map_err(|_| ChessError::Internal(format!("could not play pv move '{}'", mv_str)))?;
     }
 
     swing.net_for_stm = match stm_color {

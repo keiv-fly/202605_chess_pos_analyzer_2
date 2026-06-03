@@ -70,10 +70,7 @@ async fn analyze_starting_position_with_multipv_3() {
 
     let first = &result.lines[0];
     assert_eq!(first.rank, 1);
-    assert!(matches!(
-        first.score.kind,
-        ScoreKind::Cp | ScoreKind::Mate
-    ));
+    assert!(matches!(first.score.kind, ScoreKind::Cp | ScoreKind::Mate));
     assert!(
         !first.pv_uci.is_empty(),
         "best line must have at least one PV move"
