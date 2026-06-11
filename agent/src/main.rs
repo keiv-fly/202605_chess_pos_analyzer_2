@@ -50,6 +50,10 @@ struct Args {
     #[arg(long, default_value_t = 8)]
     max_tool_rounds: usize,
 
+    /// Start an interactive dialog. If a prompt is provided, send it as the first turn.
+    #[arg(long)]
+    chat: bool,
+
     /// Optional one-shot prompt. If omitted, the program starts an interactive loop.
     prompt: Vec<String>,
 }
@@ -132,10 +136,25 @@ async fn main() -> Result<()> {
         "content": system_prompt()
     })];
 
-    if args.prompt.is_empty() {
-        interactive_loop(args, api_key, client, mcp, openrouter_tools, &mut messages).await
+    let initial_prompt = if args.prompt.is_empty() {
+        None
     } else {
-        let prompt = args.prompt.join(" ");
+        Some(args.prompt.join(" "))
+    };
+
+    if args.chat || initial_prompt.is_none() {
+        interactive_loop(
+            args,
+            api_key,
+            client,
+            mcp,
+            openrouter_tools,
+            &mut messages,
+            initial_prompt,
+        )
+        .await
+    } else {
+        let prompt = initial_prompt.expect("checked above");
         messages.push(json!({ "role": "user", "content": prompt }));
         let answer = run_agent_turn(
             &args,
@@ -158,7 +177,14 @@ async fn interactive_loop(
     mcp: rmcp::service::RunningService<rmcp::RoleClient, ()>,
     tools: Vec<Value>,
     messages: &mut Vec<Value>,
+    initial_prompt: Option<String>,
 ) -> Result<()> {
+    eprintln!("Dialog mode. Type /help for commands, or /exit to quit.");
+
+    if let Some(prompt) = initial_prompt {
+        submit_dialog_turn(&args, &api_key, &client, &mcp, &tools, messages, &prompt).await;
+    }
+
     let mut line = String::new();
     loop {
         print!("chess-agent> ");
@@ -169,18 +195,63 @@ async fn interactive_loop(
             break;
         }
         let prompt = line.trim();
-        if prompt.eq_ignore_ascii_case("exit") || prompt.eq_ignore_ascii_case("quit") {
+        if prompt.eq_ignore_ascii_case("exit")
+            || prompt.eq_ignore_ascii_case("quit")
+            || prompt.eq_ignore_ascii_case("/exit")
+            || prompt.eq_ignore_ascii_case("/quit")
+        {
             break;
+        }
+        if prompt.eq_ignore_ascii_case("/help") || prompt.eq_ignore_ascii_case("help") {
+            print_dialog_help();
+            continue;
+        }
+        if prompt.eq_ignore_ascii_case("/clear") {
+            reset_conversation(messages);
+            eprintln!("Conversation context cleared.");
+            continue;
         }
         if prompt.is_empty() {
             continue;
         }
 
-        messages.push(json!({ "role": "user", "content": prompt }));
-        let answer = run_agent_turn(&args, &api_key, &client, &mcp, &tools, messages).await?;
-        println!("{answer}");
+        submit_dialog_turn(&args, &api_key, &client, &mcp, &tools, messages, prompt).await;
     }
     Ok(())
+}
+
+async fn submit_dialog_turn(
+    args: &Args,
+    api_key: &str,
+    client: &reqwest::Client,
+    mcp: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    tools: &[Value],
+    messages: &mut Vec<Value>,
+    prompt: &str,
+) {
+    let checkpoint = messages.len();
+    messages.push(json!({ "role": "user", "content": prompt }));
+    match run_agent_turn(args, api_key, client, mcp, tools, messages).await {
+        Ok(answer) => println!("{answer}"),
+        Err(err) => {
+            messages.truncate(checkpoint);
+            eprintln!("Turn failed: {err:#}");
+        }
+    }
+}
+
+fn reset_conversation(messages: &mut Vec<Value>) {
+    messages.clear();
+    messages.push(json!({
+        "role": "system",
+        "content": system_prompt()
+    }));
+}
+
+fn print_dialog_help() {
+    eprintln!(
+        "Commands:\n  /help   Show this help\n  /clear  Clear conversation context\n  /exit   Quit"
+    );
 }
 
 async fn run_agent_turn(
