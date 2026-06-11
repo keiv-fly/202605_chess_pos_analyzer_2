@@ -22,6 +22,24 @@ OPENROUTER_MODEL=openrouter/auto
 
 Stockfish is expected to be available through the server configuration or the repo-local `stockfish` folder.
 
+## Lichess Puzzles
+
+Download the Lichess puzzle database archive into `puzzles/`:
+
+```powershell
+python scripts/download_lichess_puzzles.py
+```
+
+The script downloads `lichess_db_puzzle.csv.zst` from the public Lichess database and overwrites the local archive each time it runs.
+
+To test the download path without fetching the full archive, use:
+
+```powershell
+python scripts/download_lichess_puzzles.py --test
+```
+
+Test mode downloads a small sample to `puzzles/lichess_db_puzzle.csv.zst.test`.
+
 ## Dialog With The Agent
 
 Start a continuing dialog:
