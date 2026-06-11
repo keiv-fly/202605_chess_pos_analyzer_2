@@ -40,6 +40,15 @@ python scripts/download_lichess_puzzles.py --test
 
 Test mode downloads a small sample to `puzzles/lichess_db_puzzle.csv.zst.test`.
 
+Extract the first 100 puzzles into a small CSV:
+
+```powershell
+python scripts/extract_top_100_puzzles.py
+```
+
+This reads directly from `puzzles/lichess_db_puzzle.csv.zst` and writes `puzzles/lichess_db_puzzle_top_100.csv` without leaving a full extracted puzzle database on disk.
+If Python cannot import `zstandard`, install it with `python -m pip install zstandard`.
+
 ## Dialog With The Agent
 
 Start a continuing dialog:
